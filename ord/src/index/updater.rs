@@ -1,5 +1,8 @@
 use {
-  self::{inscription_updater::InscriptionUpdater, inscription_updater::TX_LIMITS, rune_updater::RuneUpdater},
+  self::{
+    inscription_updater::InscriptionUpdater, inscription_updater::TX_LIMITS,
+    rune_updater::RuneUpdater,
+  },
   super::{fetcher::Fetcher, *},
   futures::future::try_join_all,
   std::sync::mpsc,
@@ -334,25 +337,60 @@ impl<'index> Updater<'_> {
     }
     let mut log_file = LOG_FILE.lock().unwrap();
     if log_file.as_ref().is_none() {
-      let chain_folder: String = match self.index.options.chain() { 
+      let chain_folder: String = match self.index.options.chain() {
         Chain::Mainnet => String::from(""),
         Chain::Testnet => String::from("testnet3/"),
         Chain::Signet => String::from("signet/"),
         Chain::Regtest => String::from("regtest/"),
       };
-      *log_file = Some(File::options().append(true).open(format!("{chain_folder}log_file_index.txt")).unwrap());
+      *log_file = Some(
+        File::options()
+          .create(true)
+          .append(true)
+          .write(true)
+          .open(format!("{chain_folder}log_file_index.txt"))
+          .unwrap(),
+      );
     }
-    println!("cmd;{0};new_block;{1}", self.height, &block.header.block_hash());
-    writeln!(log_file.as_ref().unwrap(), "cmd;{0};new_block;{1};{2}", self.height, &block.header.block_hash(), block.header.time)?;
-    (log_file.as_ref().unwrap()).flush()?;
+    println!(
+      "cmd;{0};new_block;{1}",
+      self.height,
+      &block.header.block_hash()
+    );
+    match writeln!(
+      log_file.as_ref().unwrap(),
+      "cmd;{0};new_block;{1};{2}",
+      self.height,
+      &block.header.block_hash(),
+      block.header.time
+    ) {
+      Ok(_) => (),
+      Err(e) => {
+        println!("Error writing to log file: {e}");
+        return Err(anyhow!("Error writing to log file: {e}"));
+      }
+    }
+    match (log_file.as_ref().unwrap()).flush() {
+      Ok(_) => (),
+      Err(e) => {
+        println!("Error flushing log file: {e}");
+        return Err(anyhow!("Error flushing log file: {e}"));
+      }
+    }
 
-    Reorg::detect_reorg(&block, self.height, self.index)?;
+    match Reorg::detect_reorg(&block, self.height, self.index) {
+      Ok(_) => (),
+      Err(e) => {
+        println!("Error detecting reorg: {e}");
+        return Err(anyhow!("Error detecting reorg: {e}"));
+      }
+    }
 
     let start = Instant::now();
     let sat_ranges_written = 0;
     let outputs_in_block = 0;
 
-    log::info!(
+    println!(
       "Block {} at {} with {} transactions…",
       self.height,
       timestamp(block.header.time),
@@ -411,8 +449,7 @@ impl<'index> Updater<'_> {
       wtx.open_table(INSCRIPTION_ID_TO_SEQUENCE_NUMBER)?;
     let mut inscription_number_to_sequence_number =
       wtx.open_table(INSCRIPTION_NUMBER_TO_SEQUENCE_NUMBER)?;
-    let mut inscription_id_to_txcnt =
-      wtx.open_table(INSCRIPTION_ID_TO_TXCNT)?;
+    let mut inscription_id_to_txcnt = wtx.open_table(INSCRIPTION_ID_TO_TXCNT)?;
     let mut sat_to_sequence_number = wtx.open_multimap_table(SAT_TO_SEQUENCE_NUMBER)?;
     let mut satpoint_to_sequence_number = wtx.open_multimap_table(SATPOINT_TO_SEQUENCE_NUMBER)?;
     let mut sequence_number_to_children = wtx.open_multimap_table(SEQUENCE_NUMBER_TO_CHILDREN)?;
@@ -571,7 +608,8 @@ impl<'index> Updater<'_> {
 
         outpoint_to_sat_ranges.insert(&OutPoint::null().store(), lost_sat_ranges.as_slice())?;
       }
-    } else */ if index_inscriptions {
+    } else */
+    if index_inscriptions {
       for (tx, txid) in block.txdata.iter().skip(1).chain(block.txdata.first()) {
         inscription_updater.index_envelopes(tx, *txid, None)?;
       }
@@ -666,73 +704,73 @@ impl<'index> Updater<'_> {
 
     Ok(())
   }
-/*
-  fn index_transaction_sats(
-    &mut self,
-    tx: &Transaction,
-    txid: Txid,
-    sat_to_satpoint: &mut Table<u64, &SatPointValue>,
-    input_sat_ranges: &mut VecDeque<(u64, u64)>,
-    sat_ranges_written: &mut u64,
-    outputs_traversed: &mut u64,
-    inscription_updater: &mut InscriptionUpdater,
-    index_inscriptions: bool,
-  ) -> Result {
-    if index_inscriptions {
-      inscription_updater.index_envelopes(tx, txid, Some(input_sat_ranges))?;
-    }
-
-    for (vout, output) in tx.output.iter().enumerate() {
-      let outpoint = OutPoint {
-        vout: vout.try_into().unwrap(),
-        txid,
-      };
-      let mut sats = Vec::new();
-
-      let mut remaining = output.value;
-      while remaining > 0 {
-        let range = input_sat_ranges
-          .pop_front()
-          .ok_or_else(|| anyhow!("insufficient inputs for transaction outputs"))?;
-
-        if !Sat(range.0).common() {
-          sat_to_satpoint.insert(
-            &range.0,
-            &SatPoint {
-              outpoint,
-              offset: output.value - remaining,
-            }
-            .store(),
-          )?;
-        }
-
-        let count = range.1 - range.0;
-
-        let assigned = if count > remaining {
-          self.sat_ranges_since_flush += 1;
-          let middle = range.0 + remaining;
-          input_sat_ranges.push_front((middle, range.1));
-          (range.0, middle)
-        } else {
-          range
-        };
-
-        sats.extend_from_slice(&assigned.store());
-
-        remaining -= assigned.1 - assigned.0;
-
-        *sat_ranges_written += 1;
+  /*
+    fn index_transaction_sats(
+      &mut self,
+      tx: &Transaction,
+      txid: Txid,
+      sat_to_satpoint: &mut Table<u64, &SatPointValue>,
+      input_sat_ranges: &mut VecDeque<(u64, u64)>,
+      sat_ranges_written: &mut u64,
+      outputs_traversed: &mut u64,
+      inscription_updater: &mut InscriptionUpdater,
+      index_inscriptions: bool,
+    ) -> Result {
+      if index_inscriptions {
+        inscription_updater.index_envelopes(tx, txid, Some(input_sat_ranges))?;
       }
 
-      *outputs_traversed += 1;
+      for (vout, output) in tx.output.iter().enumerate() {
+        let outpoint = OutPoint {
+          vout: vout.try_into().unwrap(),
+          txid,
+        };
+        let mut sats = Vec::new();
 
-      self.range_cache.insert(outpoint.store(), sats);
-      self.outputs_inserted_since_flush += 1;
+        let mut remaining = output.value;
+        while remaining > 0 {
+          let range = input_sat_ranges
+            .pop_front()
+            .ok_or_else(|| anyhow!("insufficient inputs for transaction outputs"))?;
+
+          if !Sat(range.0).common() {
+            sat_to_satpoint.insert(
+              &range.0,
+              &SatPoint {
+                outpoint,
+                offset: output.value - remaining,
+              }
+              .store(),
+            )?;
+          }
+
+          let count = range.1 - range.0;
+
+          let assigned = if count > remaining {
+            self.sat_ranges_since_flush += 1;
+            let middle = range.0 + remaining;
+            input_sat_ranges.push_front((middle, range.1));
+            (range.0, middle)
+          } else {
+            range
+          };
+
+          sats.extend_from_slice(&assigned.store());
+
+          remaining -= assigned.1 - assigned.0;
+
+          *sat_ranges_written += 1;
+        }
+
+        *outputs_traversed += 1;
+
+        self.range_cache.insert(outpoint.store(), sats);
+        self.outputs_inserted_since_flush += 1;
+      }
+
+      Ok(())
     }
-
-    Ok(())
-  }
-*/
+  */
   fn commit(&mut self, wtx: WriteTransaction, value_cache: HashMap<OutPoint, u64>) -> Result {
     log::info!(
       "Committing at block height {}, {} outputs traversed, {} in map, {} cached",

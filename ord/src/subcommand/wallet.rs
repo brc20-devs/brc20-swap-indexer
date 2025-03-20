@@ -215,7 +215,7 @@ fn derive_and_import_descriptor(
 
   let desc = Descriptor::new_tr(public_key, None)?;
 
-  client.import_descriptors(ImportDescriptors {
+  client.import_descriptors(vec![ImportDescriptors {
     descriptor: desc.to_string_with_secret(&key_map),
     timestamp: Timestamp::Now,
     active: Some(true),
@@ -223,7 +223,7 @@ fn derive_and_import_descriptor(
     next_index: None,
     internal: Some(change),
     label: None,
-  })?;
+  }])?;
 
   Ok(())
 }

@@ -231,18 +231,48 @@ impl Options {
     let client = Client::new(&rpc_url, auth)
       .with_context(|| format!("failed to connect to Bitcoin Core RPC at {rpc_url}"))?;
 
-    let rpc_chain = match client.get_blockchain_info()?.chain.as_str() {
-      "main" => Chain::Mainnet,
-      "test" => Chain::Testnet,
-      "regtest" => Chain::Regtest,
-      "signet" => Chain::Signet,
-      other => bail!("Bitcoin RPC server on unknown chain: {other}"),
+    #[derive(serde::Deserialize)]
+    struct ChainEnv {
+      chain: String,
+    }
+    let mut checks = 0;
+    let rpc_chain: Chain = loop {
+      let chain_info: Result<ChainEnv, bitcoincore_rpc::Error> =
+        client.call("getblockchaininfo", &[]);
+      match chain_info {
+        Ok(chain_env) => {
+          break match chain_env.chain.as_str() {
+            "main" => Chain::Mainnet,
+            "test" => Chain::Testnet,
+            "signet" => Chain::Signet,
+            other => bail!("Fractal Bitcoin RPC server on unknown chain: {other}"),
+          }
+        }
+        Err(bitcoincore_rpc::Error::JsonRpc(bitcoincore_rpc::jsonrpc::Error::Rpc(err)))
+          if err.code == -28 => {}
+        Err(err) => bail!("Failed to connect to Fractal Bitcoin Core RPC at `{rpc_url}`:  {err}"),
+      }
+
+      ensure! {
+        checks < 100,
+        "Failed to connect to Fractal Bitcoin Core RPC at `{rpc_url}`",
+      }
+
+      checks += 1;
+      thread::sleep(Duration::from_millis(100));
     };
+    // let rpc_chain = match client.get_blockchain_info()?.chain.as_str() {
+    //   "main" => Chain::Mainnet,
+    //   "test" => Chain::Testnet,
+    //   "regtest" => Chain::Regtest,
+    //   "signet" => Chain::Signet,
+    //   other => bail!("Bitcoin RPC server on unknown chain: {other}"),
+    // };
 
     let ord_chain = self.chain();
 
     if rpc_chain != ord_chain {
-      bail!("Bitcoin RPC server is on {rpc_chain} but ord is on {ord_chain}");
+      bail!("Fractal Bitcoin RPC server is on {rpc_chain} but ord is on {ord_chain}");
     }
 
     Ok(client)

@@ -453,7 +453,7 @@ impl Batch {
 
     let info = client.get_descriptor_info(&format!("rawtr({})", recovery_private_key.to_wif()))?;
 
-    let response = client.import_descriptors(ImportDescriptors {
+    let response = client.import_descriptors(vec![ImportDescriptors {
       descriptor: format!("rawtr({})#{}", recovery_private_key.to_wif(), info.checksum),
       timestamp: Timestamp::Now,
       active: Some(false),
@@ -461,7 +461,7 @@ impl Batch {
       next_index: None,
       internal: Some(false),
       label: Some("commit tx recovery key".to_string()),
-    })?;
+    }])?;
 
     for result in response {
       if !result.success {

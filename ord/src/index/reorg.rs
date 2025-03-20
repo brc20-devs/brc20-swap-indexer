@@ -47,6 +47,7 @@ impl Reorg {
           }
         }
 
+        println!("Unrecoverable reorg detected at height {}", height);
         Err(anyhow!(ReorgError::Unrecoverable))
       }
       _ => Ok(()),
@@ -83,17 +84,9 @@ impl Reorg {
       return Ok(());
     }
 
+    let blocks = index.proxy_get_blockchain_info()?.headers;
     if (height < SAVEPOINT_INTERVAL || height % SAVEPOINT_INTERVAL == 0)
-      && u32::try_from(
-        index
-          .options
-          .bitcoin_rpc_client(None)?
-          .get_blockchain_info()?
-          .headers,
-      )
-      .unwrap()
-      .saturating_sub(height)
-        <= CHAIN_TIP_DISTANCE
+      && u32::try_from(blocks).unwrap().saturating_sub(height) <= CHAIN_TIP_DISTANCE
     {
       let wtx = index.begin_write()?;
 

@@ -14,7 +14,10 @@ use {
     templates::{RuneHtml, StatusHtml},
   },
   bitcoin::block::Header,
-  bitcoincore_rpc::{json::GetBlockHeaderResult, Client},
+  bitcoincore_rpc::{
+    json::{GetBlockHeaderResult, GetBlockchainInfoResult},
+    Client,
+  },
   chrono::SubsecRound,
   indicatif::{ProgressBar, ProgressStyle},
   log::log_enabled,
@@ -2105,6 +2108,18 @@ impl Index {
         .map(|(_sequence_number, satpoint, inscription_id)| (satpoint, inscription_id))
         .collect(),
     )
+  }
+
+  pub(crate) fn proxy_get_blockchain_info(
+    &self,
+  ) -> Result<GetBlockchainInfoResult, bitcoincore_rpc::Error> {
+    match self.client.call("getblockchaininfo", &[]) {
+      Ok(result) => Ok(result),
+      Err(err) => {
+        log::error!("index.proxy_get_blockchain_info error: {}", err.to_string());
+        Err(err)
+      }
+    }
   }
 }
 

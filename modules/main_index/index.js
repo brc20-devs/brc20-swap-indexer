@@ -48,6 +48,9 @@ var cookie_file = process.env.COOKIE_FILE || ""
 
 const network_type = process.env.NETWORK_TYPE || "mainnet"
 
+const first_inscription_height_env = process.env.FIRST_INSCRIPTION_HEIGHT || -1
+console.log("first_inscription_height_env: " + first_inscription_height_env)
+
 var network = null
 var network_folder = ""
 if (network_type == "mainnet") {
@@ -67,9 +70,9 @@ if (network_type == "mainnet") {
   process.exit(1)
 }
 const first_inscription_heights = {
-  'mainnet': 767430,
-  'testnet': 2413343,
-  'signet': 112402,
+  'mainnet': first_inscription_height_env >= 0 ? first_inscription_height_env : 21000,
+  'testnet': 0,
+  'signet': 0,
   'regtest': 0,
 }
 const first_inscription_height = first_inscription_heights[network_type]
@@ -99,7 +102,7 @@ async function check_db_max_transfer_cnts() {
 
   if (Object.keys(max_transfer_cnts_db).length == 0) {
     console.log("max_transfer_cnts not found in db, getting from ord")
-    
+
     let current_directory = process.cwd()
     process.chdir(ord_folder);
 
@@ -165,6 +168,7 @@ async function main_index() {
 
     let ord_last_block_height_q = await db_pool.query(`SELECT coalesce(max(block_height), -1) as max_height from block_hashes;`)
     let ord_last_block_height = ord_last_block_height_q.rows[0].max_height
+    console.log("ord_last_block_height: " + ord_last_block_height)
     if (ord_last_block_height < first_inscription_height) { // first inscription
       ord_last_block_height = first_inscription_height
     }
@@ -199,8 +203,17 @@ async function main_index() {
     } else if (network_type == 'testnet') {
       network_argument = " --testnet"
     }
-    
-    let ord_index_cmd = ord_binary + network_argument + " --bitcoin-data-dir \"" + chain_folder + "\" --data-dir \"" + ord_datadir + "\"" + cookie_arg + " --height-limit " + (ord_end_block_height) + " " + rpc_argument + " index run"
+
+    let ord_index_cmd = ord_binary + network_argument +
+      " --bitcoin-data-dir \"" + chain_folder +
+      "\" --data-dir \"" + ord_datadir + "\"" + cookie_arg +
+      " --height-limit " + (ord_end_block_height) +
+      " " + rpc_argument +
+      " --index-transactions" +
+      " --first-inscription-height=" + (first_inscription_height) +
+      " index run"
+
+    console.log("ord command:", ord_index_cmd)
 
     try {
       let version_string = execSync(ord_version_cmd).toString()
@@ -208,9 +221,9 @@ async function main_index() {
       if (!version_string.includes(ORD_VERSION)) {
         console.error("ord version mismatch, please recompile ord via 'cargo build --release'.")
         process.exit(1)
-      }    
-      await check_max_transfer_cnts()  
-      execSync(ord_index_cmd, {stdio: 'inherit'})
+      }
+      await check_max_transfer_cnts()
+      execSync(ord_index_cmd, { stdio: 'inherit' })
     }
     catch (err) {
       console.error("ERROR ON ORD!!!")
@@ -221,7 +234,7 @@ async function main_index() {
     }
     process.chdir(current_directory);
     let ord_index_tm = +(new Date()) - ord_index_st_tm
-    
+
     const fileStream = fs.createReadStream(ord_folder + network_folder + "log_file.txt", { encoding: 'UTF-8' });
     const rl = readline.createInterface({
       input: fileStream,
@@ -239,6 +252,7 @@ async function main_index() {
 
     let current_height_q = await db_pool.query(`SELECT coalesce(max(block_height), -1) as max_height from block_hashes;`)
     let current_height = current_height_q.rows[0].max_height
+    console.log("current_height: " + current_height)
 
     console.log("Checking for possible reorg")
     for (const l of lines_index) {
@@ -247,7 +261,7 @@ async function main_index() {
       if (parts[2].trim() == "new_block") {
         let block_height = parseInt(parts[1].trim())
         if (block_height > current_height) continue
-        if (block_height < first_inscription_height ) continue
+        if (block_height < first_inscription_height) continue
         console.warn("Block repeating, possible reorg!!")
         let blockhash = parts[3].trim()
         let blockhash_db_q = await db_pool.query("select block_hash from block_hashes where block_height = $1;", [block_height])
@@ -258,11 +272,11 @@ async function main_index() {
           console.log("Reverted to block_height " + (block_height - 1))
           let reorg_tm = +(new Date()) - reorg_st_tm
           reorg_tm = Math.round(reorg_tm)
-          
+
           await db_pool.query(`INSERT into ord_indexer_reorg_stats
               (reorg_tm, old_block_height, new_block_height)
-              values ($1, $2, $3);`, 
-              [reorg_tm, current_height, block_height - 1])
+              values ($1, $2, $3);`,
+            [reorg_tm, current_height, block_height - 1])
           current_height = Math.min(current_height, block_height - 1)
         }
       }
@@ -279,7 +293,7 @@ async function main_index() {
     for (let i = 0; i < lenlines; i++) {
       let l = lines[i + ioffset]
       if (l.trim() == "") { continue }
-      
+
       let parts = l.split(';')
       if (parts[0] != "cmd") { continue }
       if (parts[2] == "block_start") {
@@ -337,8 +351,8 @@ async function main_index() {
 
       await db_pool.query(`INSERT into ord_indexer_work_stats
           (ord_index_tm, all_tm)
-          values ($1, $2);`, 
-          [ord_index_tm, all_tm])
+          values ($1, $2);`,
+        [ord_index_tm, all_tm])
       continue
     }
 
@@ -349,27 +363,28 @@ async function main_index() {
     let sql_query_insert_transfer = `INSERT into ord_transfers (id, inscription_id, block_height, old_satpoint, new_satpoint, new_pkScript, new_wallet, sent_as_fee, new_output_value, txcnt) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);`
     let sql_query_insert_content = `INSERT into ord_content (inscription_id, content, content_type, metaprotocol, block_height) values ($1, $2, $3, $4, $5);`
     let sql_query_insert_text_content = `INSERT into ord_content (inscription_id, text_content, content_type, metaprotocol, block_height) values ($1, $2, $3, $4, $5);`
-    
+
     let ord_sql_query_count = 0
     let new_inscription_count = 0
     let transfer_count = 0
 
     let max_height = -1
     for (const l of lines_index) {
-      if (l.trim() == '') { continue } 
+      if (l.trim() == '') { continue }
       let parts = l.split(';')
 
-      if (parts[0] != "cmd") { continue } 
+      if (parts[0] != "cmd") { continue }
       if (parts[2] != "new_block") { continue }
       if (parseInt(parts[1]) > max_height) max_height = parseInt(parts[1])
     }
 
-    console.log("db_height: " + current_height + " -> " + max_height)
+    console.log("db_height: " + current_height + "max_height: " + max_height)
     let main_min_block_height = current_height + 1
     let main_max_block_height = max_height
 
     let current_transfer_id_q = await db_pool.query(`SELECT coalesce(max(id), -1) as maxid from ord_transfers;`)
     let current_transfer_id = parseInt(current_transfer_id_q.rows[0].maxid) + 1
+    console.log("current_transfer_id: " + current_transfer_id)
 
     let future_sent_as_fee_transfer_id = {}
     let running_promises = []
@@ -460,10 +475,10 @@ async function main_index() {
     running_promises = []
 
     for (const l of lines_index) {
-      if (l.trim() == '') { continue } 
+      if (l.trim() == '') { continue }
       let parts = l.split(';')
 
-      if (parts[0] != "cmd") { continue } 
+      if (parts[0] != "cmd") { continue }
       if (parts[2] != "new_block") { continue }
 
       let block_height = parseInt(parts[1])
@@ -472,7 +487,7 @@ async function main_index() {
       let blocktime = parseInt(parts[4])
       await db_pool.query(`INSERT into block_hashes (block_height, block_hash, block_time) values ($1, $2, $3) ON CONFLICT (block_height) DO NOTHING;`, [block_height, blockhash, blocktime])
     }
-    
+
     let ord_sql_tm = +(new Date()) - ord_sql_st_tm
 
     console.log("Updating Log Files")
@@ -484,17 +499,17 @@ async function main_index() {
     ord_index_tm = Math.round(ord_index_tm)
     ord_sql_tm = Math.round(ord_sql_tm)
     update_log_tm = Math.round(update_log_tm)
-    
+
     let all_tm = +(new Date()) - start_tm
     all_tm = Math.round(all_tm)
 
     await db_pool.query(`INSERT into ord_indexer_work_stats
-      (main_min_block_height, main_max_block_height, ord_sql_query_count, new_inscription_count, 
+      (main_min_block_height, main_max_block_height, ord_sql_query_count, new_inscription_count,
         transfer_count, ord_index_tm, ord_sql_tm, update_log_tm, all_tm)
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9);`, 
-        [main_min_block_height, main_max_block_height, ord_sql_query_count, new_inscription_count, 
-          transfer_count, ord_index_tm, ord_sql_tm, update_log_tm, all_tm])
-    
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9);`,
+      [main_min_block_height, main_max_block_height, ord_sql_query_count, new_inscription_count,
+        transfer_count, ord_index_tm, ord_sql_tm, update_log_tm, all_tm])
+
     console.log("ALL DONE")
   }
 }
@@ -546,12 +561,12 @@ function wallet_from_pkscript(pkscript, network) {
 
 async function handle_reorg(block_height) {
   let last_correct_blockheight = block_height - 1
-  
+
   await db_pool.query(`DELETE from ord_transfers where block_height > $1;`, [last_correct_blockheight])
   await db_pool.query(`DELETE from ord_number_to_id where block_height > $1;`, [last_correct_blockheight])
   await db_pool.query(`DELETE from ord_content where block_height > $1;`, [last_correct_blockheight])
   await db_pool.query(`DELETE from block_hashes where block_height > $1;`, [last_correct_blockheight])
-  
+
   await db_pool.query(`SELECT setval('ord_transfers_id_seq', max(id)) from ord_transfers;`)
   await db_pool.query(`SELECT setval('ord_number_to_id_id_seq', max(id)) from ord_number_to_id;`)
   await db_pool.query(`SELECT setval('ord_content_id_seq', max(id)) from ord_content;`)
