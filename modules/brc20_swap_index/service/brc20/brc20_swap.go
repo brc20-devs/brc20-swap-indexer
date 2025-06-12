@@ -114,10 +114,14 @@ func ProcessUpdateLatestBRC20SwapInit(ctx context.Context, startHeight, endHeigh
 			brc20swapLoader.DumpBRC20InputData("./data/brc20.input.txt", brc20DatasDump, true)
 		}()
 	} else {
-		brc20DatasParse = brc20DatasLoad
-		brc20DatasParse <- &brc20swapModel.InscriptionBRC20Data{}
-
-		close(brc20DatasParse)
+		go func() {
+			for data := range brc20DatasLoad {
+				brc20DatasParse <- data
+			}
+			// finish
+			brc20DatasParse <- &brc20swapModel.InscriptionBRC20Data{}
+			close(brc20DatasParse)
+		}()
 	}
 
 	g := &brc20swapIndexer.BRC20ModuleIndexer{}
