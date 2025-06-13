@@ -187,10 +187,10 @@ pub(crate) struct InscriptionEntry {
   pub(crate) fee: u64,
   pub(crate) height: u32,
   pub(crate) id: InscriptionId,
-  pub(crate) inscription_number: i32,
-  pub(crate) parent: Option<u32>,
+  pub(crate) inscription_number: i64,
+  pub(crate) parent: Option<u64>,
   pub(crate) sat: Option<Sat>,
-  pub(crate) sequence_number: u32,
+  pub(crate) sequence_number: u64,
   pub(crate) timestamp: u32,
   pub(crate) is_json_or_text: bool,
   pub(crate) is_cursed_for_brc20: bool,
@@ -202,10 +202,10 @@ pub(crate) type InscriptionEntryValue = (
   u64,                // fee
   u32,                // height
   InscriptionIdValue, // inscription id
-  i32,                // inscription number
-  Option<u32>,        // parent
+  i64,                // inscription number
+  Option<u64>,        // parent
   Option<u64>,        // sat
-  u32,                // sequence number
+  u64,                // sequence number
   u32,                // timestamp
   i8,                 // is_json_or_text
   i8,                 // is_cursed_for_brc20

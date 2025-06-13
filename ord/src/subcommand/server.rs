@@ -52,7 +52,7 @@ mod error;
 #[derive(Copy, Clone)]
 pub(crate) enum InscriptionQuery {
   Id(InscriptionId),
-  Number(i32),
+  Number(i64),
 }
 
 impl FromStr for InscriptionQuery {

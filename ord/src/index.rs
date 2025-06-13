@@ -61,14 +61,14 @@ macro_rules! define_multimap_table {
   };
 }
 
-define_multimap_table! { SATPOINT_TO_SEQUENCE_NUMBER, &SatPointValue, u32 }
-define_multimap_table! { SAT_TO_SEQUENCE_NUMBER, u64, u32 }
-define_multimap_table! { SEQUENCE_NUMBER_TO_CHILDREN, u32, u32 }
+define_multimap_table! { SATPOINT_TO_SEQUENCE_NUMBER, &SatPointValue, u64 }
+define_multimap_table! { SAT_TO_SEQUENCE_NUMBER, u64, u64 }
+define_multimap_table! { SEQUENCE_NUMBER_TO_CHILDREN, u64, u64 }
 define_table! { HEIGHT_TO_BLOCK_HEADER, u32, &HeaderValue }
-define_table! { HEIGHT_TO_LAST_SEQUENCE_NUMBER, u32, u32 }
-define_table! { HOME_INSCRIPTIONS, u32, InscriptionIdValue }
-define_table! { INSCRIPTION_ID_TO_SEQUENCE_NUMBER, InscriptionIdValue, u32 }
-define_table! { INSCRIPTION_NUMBER_TO_SEQUENCE_NUMBER, i32, u32 }
+define_table! { HEIGHT_TO_LAST_SEQUENCE_NUMBER, u32, u64 }
+define_table! { HOME_INSCRIPTIONS, u64, InscriptionIdValue }
+define_table! { INSCRIPTION_ID_TO_SEQUENCE_NUMBER, InscriptionIdValue, u64 }
+define_table! { INSCRIPTION_NUMBER_TO_SEQUENCE_NUMBER, i64, u64 }
 define_table! { INSCRIPTION_ID_TO_TXCNT, InscriptionIdValue, i64 }
 define_table! { OUTPOINT_TO_RUNE_BALANCES, &OutPointValue, &[u8] }
 define_table! { OUTPOINT_TO_SAT_RANGES, &OutPointValue, &[u8] }
@@ -76,9 +76,9 @@ define_table! { OUTPOINT_TO_VALUE, &OutPointValue, u64}
 define_table! { RUNE_ID_TO_RUNE_ENTRY, RuneIdValue, RuneEntryValue }
 define_table! { RUNE_TO_RUNE_ID, u128, RuneIdValue }
 define_table! { SAT_TO_SATPOINT, u64, &SatPointValue }
-define_table! { SEQUENCE_NUMBER_TO_INSCRIPTION_ENTRY, u32, InscriptionEntryValue }
-define_table! { SEQUENCE_NUMBER_TO_RUNE_ID, u32, RuneIdValue }
-define_table! { SEQUENCE_NUMBER_TO_SATPOINT, u32, &SatPointValue }
+define_table! { SEQUENCE_NUMBER_TO_INSCRIPTION_ENTRY, u64, InscriptionEntryValue }
+define_table! { SEQUENCE_NUMBER_TO_RUNE_ID, u64, RuneIdValue }
+define_table! { SEQUENCE_NUMBER_TO_SATPOINT, u64, &SatPointValue }
 define_table! { STATISTIC_TO_COUNT, u64, u64 }
 define_table! { TRANSACTION_ID_TO_RUNE, &TxidValue, u128 }
 define_table! { TRANSACTION_ID_TO_TRANSACTION, &TxidValue, &[u8] }
@@ -1198,7 +1198,7 @@ impl Index {
 
   pub(crate) fn get_children_by_sequence_number_paginated(
     &self,
-    sequence_number: u32,
+    sequence_number: u64,
     page_size: usize,
     page_index: usize,
   ) -> Result<(Vec<InscriptionId>, bool)> {
@@ -1346,7 +1346,7 @@ impl Index {
   #[cfg(test)]
   pub(crate) fn get_inscription_id_by_inscription_number(
     &self,
-    inscription_number: i32,
+    inscription_number: i64,
   ) -> Result<Option<InscriptionId>> {
     let rtx = self.database.begin_read()?;
 
@@ -1784,7 +1784,7 @@ impl Index {
     )
   }
 
-  pub(crate) fn get_feed_inscriptions(&self, n: usize) -> Result<Vec<(u32, InscriptionId)>> {
+  pub(crate) fn get_feed_inscriptions(&self, n: usize) -> Result<Vec<(u64, InscriptionId)>> {
     Ok(
       self
         .database
@@ -1800,7 +1800,7 @@ impl Index {
     )
   }
 
-  pub fn inscription_info_benchmark(index: &Index, inscription_number: i32) {
+  pub fn inscription_info_benchmark(index: &Index, inscription_number: i64) {
     Self::inscription_info(index, InscriptionQuery::Number(inscription_number)).unwrap();
   }
 
@@ -2067,8 +2067,8 @@ impl Index {
   }
 
   fn inscriptions_on_output<'a: 'tx, 'tx>(
-    satpoint_to_sequence_number: &'a impl ReadableMultimapTable<&'static SatPointValue, u32>,
-    sequence_number_to_inscription_entry: &'a impl ReadableTable<u32, InscriptionEntryValue>,
+    satpoint_to_sequence_number: &'a impl ReadableMultimapTable<&'static SatPointValue, u64>,
+    sequence_number_to_inscription_entry: &'a impl ReadableTable<u64, InscriptionEntryValue>,
     outpoint: OutPoint,
   ) -> Result<Vec<(SatPoint, InscriptionId)>> {
     let start = SatPoint {
